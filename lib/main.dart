@@ -1,125 +1,276 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'dart:async';
 
 void main() {
-  runApp(const MyApp());
+  runApp(MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: ProductInputScreen(),
+  ));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
+class ProductInputScreen extends StatefulWidget {
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a blue toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
+  _ProductInputScreenState createState() => _ProductInputScreenState();
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class _ProductInputScreenState extends State<ProductInputScreen> {
+  final TextEditingController screenSizeController = TextEditingController();
+  final TextEditingController ramController = TextEditingController();
+  final TextEditingController processorController = TextEditingController();
+  final TextEditingController graphicsCardRamController = TextEditingController();
+  final TextEditingController brandController = TextEditingController();
+  final TextEditingController graphicsCoprocessorController = TextEditingController();
+  final TextEditingController hardDriveController = TextEditingController();
+  final TextEditingController processorBrandController = TextEditingController();
+  final TextEditingController numProcessorsController = TextEditingController();
+  final TextEditingController priceController = TextEditingController();
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+  Map<String, List<String>> recentInputs = {};
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
+  String apiResponse = "";
+  bool isLoading = false;
 
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
+  void updateRecentInputs(String key, String value) {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      if (!recentInputs.containsKey(key)) {
+        recentInputs[key] = [];
+      }
+      recentInputs[key]!.remove(value); // Remove if already exists
+      recentInputs[key]!.insert(0, value); // Add to the front
+      if (recentInputs[key]!.length > 3) {
+        recentInputs[key] = recentInputs[key]!.sublist(0, 3); // Keep last 3
+      }
     });
   }
 
+  Future<void> submitData() async {
+    const String apiUrl = "http://13.60.224.35:5000/generate-review";
+
+    final Map<String, dynamic> data = {
+      "screen_size": screenSizeController.text,
+      "ram": ramController.text,
+      "processor": processorController.text,
+      "graphics_card_ram_size": graphicsCardRamController.text,
+      "brand": brandController.text,
+      "graphics_coprocessor": graphicsCoprocessorController.text,
+      "hard_drive": hardDriveController.text,
+      "processor_brand": processorBrandController.text,
+      "number_of_processors": int.tryParse(numProcessorsController.text) ?? 0,
+      "price": priceController.text,
+    };
+
+    // Update recent inputs
+    data.forEach((key, value) {
+      if (value is String && value.isNotEmpty) {
+        updateRecentInputs(key, value);
+      }
+    });
+
+    setState(() {
+      isLoading = true;
+      apiResponse = "";
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(data),
+      );
+
+      if (response.statusCode == 200) {
+        final decodedResponse = jsonDecode(response.body);
+        String review = decodedResponse['review'] ?? "No review available.";
+        typewriterEffect(review, delayMilliseconds: 10);
+      } else {
+        setState(() {
+          apiResponse = "Error: ${response.statusCode}. ${response.body}";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        apiResponse = "Error: $e";
+      });
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  void typewriterEffect(String text, {int delayMilliseconds = 50}) async {
+    setState(() {
+      apiResponse = "";
+    });
+
+    for (int i = 0; i < text.length; i++) {
+      await Future.delayed(Duration(milliseconds: delayMilliseconds));
+      setState(() {
+        apiResponse += text[i];
+      });
+    }
+  }
+
+  Widget buildTextFieldWithSuggestions(
+      TextEditingController controller, String label, String key) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.blueGrey.shade800,
+            ),
+          ),
+          SizedBox(height: 5),
+          Autocomplete<String>(
+            optionsBuilder: (TextEditingValue textEditingValue) {
+              if (textEditingValue.text.isEmpty) {
+                return const Iterable<String>.empty();
+              }
+              return (recentInputs[key] ?? [])
+                  .where((item) =>
+                  item.toLowerCase().contains(textEditingValue.text.toLowerCase()))
+                  .toList();
+            },
+            onSelected: (String selection) {
+              controller.text = selection;
+            },
+            fieldViewBuilder: (BuildContext context,
+                TextEditingController textFieldController,
+                FocusNode focusNode,
+                VoidCallback onFieldSubmitted) {
+              return TextField(
+                controller: textFieldController..text = controller.text,
+                focusNode: focusNode,
+                onChanged: (value) {
+                  controller.text = value;
+                },
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      body: SingleChildScrollView(
+        child: Stack(
+          children: [
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade200, Colors.blue.shade50],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(height: 40),
+                  Center(
+                    child: Text(
+                      'Techie - BART',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade900,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Give your specifications to Techie - BART',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
+                  SizedBox(height: 30),
+                  buildTextFieldWithSuggestions(screenSizeController, 'Screen Size', "screen_size"),
+                  buildTextFieldWithSuggestions(ramController, 'RAM', "ram"),
+                  buildTextFieldWithSuggestions(processorController, 'Processor', "processor"),
+                  buildTextFieldWithSuggestions(
+                      graphicsCardRamController, 'Graphics Card RAM Size', "graphics_card_ram_size"),
+                  buildTextFieldWithSuggestions(brandController, 'Brand', "brand"),
+                  buildTextFieldWithSuggestions(
+                      graphicsCoprocessorController, 'Graphics Coprocessor', "graphics_coprocessor"),
+                  buildTextFieldWithSuggestions(hardDriveController, 'Hard Drive', "hard_drive"),
+                  buildTextFieldWithSuggestions(
+                      processorBrandController, 'Processor Brand', "processor_brand"),
+                  buildTextFieldWithSuggestions(
+                      numProcessorsController, 'Number of Processors', "number_of_processors"),
+                  buildTextFieldWithSuggestions(priceController, 'Price', "price"),
+                  SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: submitData,
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                    child: Text(
+                      'Submit',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                  SizedBox(height: 20),
+                  Text(
+                    'Techie - BART: Writing its Experience',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                  SizedBox(height: 20),
+                  Container(
+                    padding: EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: isLoading
+                        ? Center(
+                      child: CircularProgressIndicator(),
+                    )
+                        : Text(
+                      apiResponse.isNotEmpty
+                          ? apiResponse
+                          : "",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'Courier',
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
